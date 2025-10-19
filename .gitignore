@@ -1,0 +1,9 @@
+# C compiled files
+*.o
+*.exe
+*.out
+*.app
+
+# Executables without extensions
+kubsh
+.kubsh_history
