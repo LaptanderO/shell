@@ -17,6 +17,11 @@ int is_executable(const char *path) {
     return access(path, X_OK) == 0;
 }
 
+void create_user(const char *path){
+    char *argv[3];
+    
+}
+
 char *find_in_path(const char *command) {
     char *path_env = getenv("PATH");
     if (path_env == NULL) {
@@ -43,7 +48,6 @@ char *find_in_path(const char *command) {
     return NULL;
 }
 
-// Запуск команды
 void fork_exec(char *full_path, char **argv) {
     int pid = fork();
     if (pid == 0) {
