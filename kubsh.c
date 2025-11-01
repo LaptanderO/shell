@@ -48,6 +48,33 @@ char *find_in_path(const char *command) {
     return NULL;
 }
 
+void print_env_variable(char *input) {
+    char *var_name = input + 3;
+    if (var_name[0] == '$') {
+        var_name++;
+    }
+    
+    char *value = getenv(var_name);
+    if (value != NULL) {
+        if (strcmp(var_name, "PATH") == 0) {
+            printf("PATH directories:\n");
+            char *path_copy = strdup(value);
+            char *dir = strtok(path_copy, ":");
+            int count = 1;
+            
+            while (dir != NULL) {
+                printf("%d. %s\n", count++, dir);
+                dir = strtok(NULL, ":");
+            }
+            free(path_copy);
+        } else {
+            printf("%s=%s\n", var_name, value);
+        }
+    } else {
+        printf("Environment variable not found: %s\n", var_name);
+    }
+}
+
 void fork_exec(char *full_path, char **argv) {
     int pid = fork();
     if (pid == 0) {
@@ -60,6 +87,10 @@ void fork_exec(char *full_path, char **argv) {
     } else {
         perror("fork");
     }
+}
+
+void debug(char* input){
+    printf("%s\n", input + 6);
 }
 
 int main() {
@@ -89,29 +120,37 @@ int main() {
             free(input);
             break;
         }
-        
-        char *argv[10];
-        int argc = 0;
-        
-        char *token = strtok(input, " ");
-        while (token != NULL && argc < 9) {
-            argv[argc++] = token;
-            token = strtok(NULL, " ");
+        else if(strncmp(input, "debug ", 6) == 0){
+            debug(input);
         }
-        argv[argc] = NULL;
-        
-        if (argc > 0) {
-            char *full_path = find_in_path(argv[0]);
-            if (full_path != NULL) {
-                fork_exec(full_path, argv);
-                free(full_path);
-            } else {
-                printf("Command not found: %s\n", argv[0]);
-            }
+        else if(strncmp(input, "\\e ", 3) == 0){
+            print_env_variable(input);
         }
+        else{
         
-        free(input);
-    }
+             char *argv[10];
+             int argc = 0;
+        
+             char *token = strtok(input, " ");
+             while (token != NULL && argc < 9) {
+                 argv[argc++] = token;
+                 token = strtok(NULL, " ");
+             }
+             argv[argc] = NULL;
+        
+             if (argc > 0) {
+                 char *full_path = find_in_path(argv[0]);
+                 if (full_path != NULL) {
+                     fork_exec(full_path, argv);
+                     free(full_path);
+             } else {
+                     printf("Command not found: %s\n", argv[0]);
+             }
+        }
+     }   
+         free(input);
+     }
+
     
     write_history(HISTORY_FILE);
     
