@@ -1,0 +1,18 @@
+#0 building with "default" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 188B done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/alpine:latest
+#2 ERROR: failed to authorize: DeadlineExceeded: failed to fetch anonymous token: Get "https://auth.docker.io/token?scope=repository%3Alibrary%2Falpine%3Apull&service=registry.docker.io": dial tcp 3.227.50.168:443: i/o timeout
+------
+ > [internal] load metadata for docker.io/library/alpine:latest:
+------
+Dockerfile:1
+--------------------
+   1 | >>> FROM alpine
+   2 |     RUN apt-get update && apt-get install -y --no-install-recomends gcc make libreadline-dev libfuse3-dev
+   3 |     WORKDIR /opt
+--------------------
+ERROR: failed to solve: DeadlineExceeded: DeadlineExceeded: DeadlineExceeded: alpine: failed to resolve source metadata for docker.io/library/alpine:latest: failed to authorize: DeadlineExceeded: failed to fetch anonymous token: Get "https://auth.docker.io/token?scope=repository%3Alibrary%2Falpine%3Apull&service=registry.docker.io": dial tcp 3.227.50.168:443: i/o timeout
