@@ -59,7 +59,7 @@ static int users_mkdir(const char *path, mode_t mode) {
     int ret;
     struct stat st;
     uid_t current_uid = getuid();
-    gid_t current_gid = getdid();
+    gid_t current_gid = getgid();
 
     if(stat(path, &st) == 0){
         errno = EEXIST;
@@ -74,7 +74,8 @@ static int users_mkdir(const char *path, mode_t mode) {
 
     char *last_slash = strrchr(parent_dir, '/');
     if(last_slash){
-        *last_slash = '\O';
+        *last_slash = '\0';
+        
         if(strlen(parent_dir) > 0) {
             if(stat(parent_dir, &st) != 0){
                 free(parent_dir);
@@ -83,6 +84,10 @@ static int users_mkdir(const char *path, mode_t mode) {
             }
         }
     }
+
+    free(parent_dir);
+
+    return 0;
 }
 
 
