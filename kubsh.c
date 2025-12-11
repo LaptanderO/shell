@@ -93,6 +93,52 @@ void debug(char* input){
     printf("%s\n", input + 6);
 }
 
+void disk_info_command(char *input) {
+    char *device = input + 3; // Пропускаем "\l "
+    
+    // Убираем "/dev/" если есть
+    if (strncmp(device, "/dev/", 5) == 0) {
+        device += 5; // Пропускаем "/dev/"
+    }
+    
+    FILE *file = fopen("/proc/partitions", "r");
+    if (file == NULL) {
+        printf("Cannot read disk info\n");
+        return;
+    }
+    
+    printf("Partitions for %s:\n", device);
+    
+    char line[256];
+    // Пропускаем первые 2 строки заголовка
+    fgets(line, sizeof(line), file);
+    fgets(line, sizeof(line), file);
+    
+    int found = 0;
+    while (fgets(line, sizeof(line), file) != NULL) {
+        // Ищем имя устройства в конце строки
+        char *pos = strrchr(line, ' '); // Последний пробел в строке
+        if (pos != NULL) {
+            pos++; // Пропускаем пробел
+            // Сравниваем имя устройства
+            if (strncmp(pos, device, strlen(device)) == 0) {
+                found = 1;
+                // Парсим строку
+                int major, minor, blocks;
+                char name[32];
+                sscanf(line, "%d %d %d %s", &major, &minor, &blocks, name);
+                printf("%s: %d blocks (~%d MB)\n", name, blocks, blocks / 2048);
+            }
+        }
+    }
+    
+    if (!found) {
+        printf("No partitions found for device %s\n", device);
+    }
+    
+    fclose(file);
+}
+
 int main() {
     rl_clear_signals();
     signal(SIGHUP, sig_handler);
@@ -125,6 +171,9 @@ int main() {
         }
         else if(strncmp(input, "\\e ", 3) == 0){
             print_env_variable(input);
+        }
+        else if(strncmp(input, "\\l ", 3) == 0){
+            disk_info_command(input);
         }
         else{
         
