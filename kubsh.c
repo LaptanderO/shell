@@ -9,6 +9,10 @@
 
 #define HISTORY_FILE ".kubsh_history"
 
+// В kubsh.c, после #include и до main()
+int start_users_vfs(const char *mount_point);
+void stop_users_vfs(void);
+
 void sig_handler(int sig) {
     printf("Configuration reloaded\n");
 }
@@ -147,6 +151,15 @@ int main() {
 
     char *input;
 
+    char mount_point[256];
+    snprintf(mount_point, sizeof(mount_point), "%s/users", getenv("HOME"));
+    
+    if (start_users_vfs(mount_point) == 0) {
+        printf("Users VFS mounted at %s\n", mount_point);
+    } else {
+        printf("Failed to mount VFS\n");
+    }
+
     while (1) {
         input = readline("#> ");
         
@@ -202,6 +215,7 @@ int main() {
 
     
     write_history(HISTORY_FILE);
+    stop_users_vfs();
     
     return 0;
 }
