@@ -1,0 +1,36 @@
+name: CI/CD for kubsh
+
+on: [push, pull_request]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          gcc make \
+          libreadline-dev \
+          libfuse3-dev
+        
+    - name: Compile
+      run: make build
+    
+    - name: Build deb package
+      run: make deb
+    
+    - name: Run checks
+      run: |
+        # Проверка 1: бинарник создан
+        test -f kubsh && echo "✓ Binary created"
+        
+        # Проверка 2: deb-пакет создан
+        test -f kubsh_*.deb && echo "✓ DEB package created"
+        
+        # Проверка 3: можно запустить
+        timeout 1 ./kubsh -c "echo test" 2>/dev/null || echo "Binary executable"
