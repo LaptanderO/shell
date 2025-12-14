@@ -1,0 +1,6 @@
+Package: kubsh
+Version: 1.0
+Architecture: amd64
+Maintainer: Student <student@example.com>
+Description: Custom shell with users VFS
+ A custom shell with virtual filesystem for user management.

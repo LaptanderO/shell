@@ -1,10 +1,20 @@
-all: build run
+all: build
 
-build: kubsh.c vfs.c
-	gcc vfs.c kubsh.c -l readline -l fuse3 -o kubsh
+build: kubsh
+
+kubsh: kubsh.c vfs.c
+	gcc kubsh.c vfs.c -lreadline -lfuse3 -o kubsh
 
 run: kubsh
-	 ./kubsh
+	./kubsh
+
+deb: kubsh
+	mkdir -p kubsh-package/usr/bin
+	cp kubsh kubsh-package/usr/bin/
+	
+	dpkg-deb --build kubsh-package kubsh_1.0_amd64.deb
 
 clean:
-	rm kubsh
+	rm -f kubsh
+	rm -rf kubsh-package
+	rm -f *.deb
