@@ -284,15 +284,7 @@ int main() {
     
     // ===== ШАГ 3: ПРОВЕРКА МОНТИРОВАНИЯ =====
     sleep(1); // Даем время FUSE
-    
-    printf("\n=== Testing VFS ===\n");
-    
-    // Простая проверка
-    char cmd[512];
-    snprintf(cmd, sizeof(cmd), "ls -la '%s' 2>&1", mount_point);
-    printf("$ %s\n", cmd);
-    system(cmd);
-    
+     
     // ===== ШАГ 4: ОСНОВНОЙ ЦИКЛ ШЕЛЛА =====
     printf("\n=== Shell ready ===\n");
 
