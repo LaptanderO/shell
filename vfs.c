@@ -71,6 +71,7 @@ int get_users_list(void) {
     }
     
     endpwent();
+    printf("[VFS DEBUG] Total users: %d\n", users_count);
     return users_count;
 }
 
@@ -102,6 +103,7 @@ static int users_readdir(
     
     if (strcmp(path, "/") == 0) {
         // Корневая директория - список пользователей
+         printf("[VFS DEBUG] Listing users in root dir, count: %d\n", users_count);
         for (int i = 0; i < users_count; i++) {
             filler(buf, users_list[i]->pw_name, NULL, 0, 0);
         }
@@ -110,11 +112,16 @@ static int users_readdir(
         char *user_name = strrchr(path, '/');
         if (user_name) {
             user_name++; // Пропускаем '/'
+             printf("[VFS DEBUG] Looking for user: %s\n", user_name);
             struct passwd *user = find_user(user_name);
             if (user) {
+                printf("[VFS DEBUG] Found user, adding files\n");
                 filler(buf, "id", NULL, 0, 0);
                 filler(buf, "home", NULL, 0, 0);
                 filler(buf, "shell", NULL, 0, 0);
+            }
+            else{
+                printf("[VFS DEBUG] User not found: %s\n", user_name);
             }
         }
     }
@@ -147,43 +154,57 @@ static int users_read(
 ) {
     (void) fi;
     
-    // Определяем пользователя
-    char *slash = strrchr(path, '/');
-    if (!slash) return -ENOENT;
+    printf("[VFS DEBUG] read called for: '%s', size=%zu, offset=%ld\n", 
+           path, size, offset);
     
-    char *file_name = slash + 1;
-    *slash = '\0'; // Теперь path содержит путь к директории пользователя
+    // Создаем копию пути
+    char path_copy[256];
+    strncpy(path_copy, path, sizeof(path_copy) - 1);
+    path_copy[sizeof(path_copy) - 1] = '\0';
     
-    char *user_name = strrchr(path, '/');
-    if (!user_name) {
-        *slash = '/'; // Восстанавливаем
+    // Убираем начальный слеш
+    char *name = path_copy;
+    if (name[0] == '/') {
+        name++;
+    }
+    
+    // Находим разделитель
+    char *slash = strchr(name, '/');
+    if (!slash) {
+        printf("[VFS DEBUG] No slash in path: %s\n", path);
         return -ENOENT;
     }
-    user_name++; // Пропускаем '/'
     
-    *slash = '/'; // Восстанавливаем исходный путь
+    // Разделяем
+    *slash = '\0';
+    char *username = name;
+    char *filename = slash + 1;
     
-    struct passwd *user = find_user(user_name);
-    if (!user) return -ENOENT;
+    printf("[VFS DEBUG] Reading: user='%s', file='%s'\n", username, filename);
+    
+    struct passwd *user = find_user(username);
+    if (!user) {
+        printf("[VFS DEBUG] User not found: %s\n", username);
+        return -ENOENT;
+    }
     
     // Определяем содержимое файла
-    const char *content = NULL;
-    char content_buffer[256];
+    char content[256];
+    content[0] = '\0';
     
-    if (strcmp(file_name, "id") == 0) {
-        snprintf(content_buffer, sizeof(content_buffer), "%d\n", user->pw_uid);
-        content = content_buffer;
-    } else if (strcmp(file_name, "home") == 0) {
-        snprintf(content_buffer, sizeof(content_buffer), "%s\n", user->pw_dir);
-        content = content_buffer;
-    } else if (strcmp(file_name, "shell") == 0) {
-        snprintf(content_buffer, sizeof(content_buffer), "%s\n", user->pw_shell);
-        content = content_buffer;
+    if (strcmp(filename, "id") == 0) {
+        snprintf(content, sizeof(content), "%d\n", user->pw_uid);
+    } else if (strcmp(filename, "home") == 0) {
+        snprintf(content, sizeof(content), "%s\n", user->pw_dir);
+    } else if (strcmp(filename, "shell") == 0) {
+        snprintf(content, sizeof(content), "%s\n", user->pw_shell);
     } else {
+        printf("[VFS DEBUG] Invalid filename: %s\n", filename);
         return -ENOENT;
     }
     
     size_t content_len = strlen(content);
+    printf("[VFS DEBUG] Content: '%s', len=%zu\n", content, content_len);
     
     if (offset >= content_len) {
         return 0; // Конец файла
@@ -194,6 +215,7 @@ static int users_read(
     }
     
     memcpy(buf, content + offset, size);
+    printf("[VFS DEBUG] Returning %zu bytes\n", size);
     return size;
 }
 
@@ -204,6 +226,8 @@ static int users_getattr(const char *path, struct stat *stbuf,
     
     memset(stbuf, 0, sizeof(struct stat));
     
+    printf("[VFS DEBUG] getattr called for: '%s'\n", path);
+    
     if (strcmp(path, "/") == 0) {
         // Корневая директория
         stbuf->st_mode = S_IFDIR | 0755;
@@ -213,56 +237,70 @@ static int users_getattr(const char *path, struct stat *stbuf,
         return 0;
     }
     
-    char *path_copy = strdup(path);
-    char *slash = strrchr(path_copy, '/');
+    // Создаем копию пути для безопасной работы
+    char path_copy[256];
+    strncpy(path_copy, path, sizeof(path_copy) - 1);
+    path_copy[sizeof(path_copy) - 1] = '\0';
     
-    if (slash && slash != path_copy) {
-        *slash = '\0'; // Получаем путь к родительской директории
+    // Убираем начальный слеш
+    char *name = path_copy;
+    if (name[0] == '/') {
+        name++;
+    }
+    
+    // Ищем разделитель
+    char *slash = strchr(name, '/');
+    
+    if (slash == NULL) {
+        // Нет слеша - это директория пользователя (например "student")
+        struct passwd *user = find_user(name);
+        if (user) {
+            printf("[VFS DEBUG] User directory: %s\n", name);
+            stbuf->st_mode = S_IFDIR | 0755;
+            stbuf->st_nlink = 2;
+            stbuf->st_uid = user->pw_uid;
+            stbuf->st_gid = user->pw_gid;
+            return 0;
+        }
+    } else {
+        // Есть слеш - это файл в директории пользователя
+        *slash = '\0';  // Разделяем на имя пользователя и имя файла
+        char *username = name;
+        char *filename = slash + 1;
         
-        if (strcmp(path_copy, "/") == 0) {
-            // Это пользователь в корневой директории
-            struct passwd *user = find_user(slash + 1);
-            if (user) {
-                stbuf->st_mode = S_IFDIR | 0755;
-                stbuf->st_nlink = 2;
+        printf("[VFS DEBUG] Checking: user='%s', file='%s'\n", username, filename);
+        
+        struct passwd *user = find_user(username);
+        if (user) {
+            // Проверяем допустимые файлы
+            if (strcmp(filename, "id") == 0 || 
+                strcmp(filename, "home") == 0 || 
+                strcmp(filename, "shell") == 0) {
+                
+                printf("[VFS DEBUG] Valid file for user %s: %s\n", username, filename);
+                stbuf->st_mode = S_IFREG | 0644;
+                stbuf->st_nlink = 1;
                 stbuf->st_uid = user->pw_uid;
                 stbuf->st_gid = user->pw_gid;
-                free(path_copy);
+                
+                // Устанавливаем размер файла
+                if (strcmp(filename, "id") == 0) {
+                    stbuf->st_size = snprintf(NULL, 0, "%d\n", user->pw_uid);
+                } else if (strcmp(filename, "home") == 0) {
+                    stbuf->st_size = strlen(user->pw_dir) + 1;  // +1 для \n
+                } else if (strcmp(filename, "shell") == 0) {
+                    stbuf->st_size = strlen(user->pw_shell) + 1;
+                }
                 return 0;
+            } else {
+                printf("[VFS DEBUG] Invalid filename: %s\n", filename);
             }
         } else {
-            // Это файл внутри директории пользователя
-            char *user_name = strrchr(path_copy, '/');
-            if (user_name) {
-                user_name++; // Пропускаем '/'
-                struct passwd *user = find_user(user_name);
-                if (user) {
-                    char *file_name = slash + 1;
-                    if (strcmp(file_name, "id") == 0 || 
-                        strcmp(file_name, "home") == 0 || 
-                        strcmp(file_name, "shell") == 0) {
-                        stbuf->st_mode = S_IFREG | 0644;
-                        stbuf->st_nlink = 1;
-                        stbuf->st_uid = user->pw_uid;
-                        stbuf->st_gid = user->pw_gid;
-                        
-                        // Устанавливаем размер файла
-                        if (strcmp(file_name, "id") == 0) {
-                            stbuf->st_size = snprintf(NULL, 0, "%d\n", user->pw_uid);
-                        } else if (strcmp(file_name, "home") == 0) {
-                            stbuf->st_size = strlen(user->pw_dir) + 1;
-                        } else if (strcmp(file_name, "shell") == 0) {
-                            stbuf->st_size = strlen(user->pw_shell) + 1;
-                        }
-                        free(path_copy);
-                        return 0;
-                    }
-                }
-            }
+            printf("[VFS DEBUG] User not found: %s\n", username);
         }
     }
     
-    free(path_copy);
+    printf("[VFS DEBUG] getattr: not found: %s\n", path);
     return -ENOENT;
 }
 
@@ -341,7 +379,12 @@ int start_users_vfs(const char *mount_point) {
             return -1;
         }
     }
-    
+
+    if (chown(mount_point, getuid(), getgid()) != 0) {
+        perror("chown mount_point");
+        // Не завершаем, продолжаем
+    }
+
     int pid = fork();    
     if (pid == 0) {
         // Дочерний процесс
@@ -366,6 +409,12 @@ int start_users_vfs(const char *mount_point) {
         // Родительский процесс
         vfs_pid = pid;
         printf("VFS запущена в процессе %d, монтирована в %s\n", pid, mount_point);
+        sleep(1);
+
+        if (stat(mount_point, &st) == 0) {
+            printf("✓ VFS successfully mounted\n");
+        }
+
         return 0;
     } else {
         perror("fork");
