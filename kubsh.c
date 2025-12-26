@@ -107,16 +107,15 @@ void fork_exec(char *full_path, char **argv) {
     }
 }
 
-void debug(char* input){
+void echo(char* input){
     printf("%s\n", input + 6);
 }
 
 void disk_info_command(char *input) {
-    char *device = input + 3; // Пропускаем "\l "
+    char *device = input + 3;
     
-    // Убираем "/dev/" если есть
     if (strncmp(device, "/dev/", 5) == 0) {
-        device += 5; // Пропускаем "/dev/"
+        device += 5;
     }
     
     FILE *file = fopen("/proc/partitions", "r");
@@ -128,20 +127,17 @@ void disk_info_command(char *input) {
     printf("Partitions for %s:\n", device);
     
     char line[256];
-    // Пропускаем первые 2 строки заголовка
     fgets(line, sizeof(line), file);
     fgets(line, sizeof(line), file);
     
     int found = 0;
     while (fgets(line, sizeof(line), file) != NULL) {
-        // Ищем имя устройства в конце строки
-        char *pos = strrchr(line, ' '); // Последний пробел в строке
+        char *pos = strrchr(line, ' ');
         if (pos != NULL) {
-            pos++; // Пропускаем пробел
-            // Сравниваем имя устройства
+            pos++;
             if (strncmp(pos, device, strlen(device)) == 0) {
                 found = 1;
-                // Парсим строку
+                
                 int major, minor, blocks;
                 char name[32];
                 sscanf(line, "%d %d %d %s", &major, &minor, &blocks, name);
@@ -158,24 +154,20 @@ void disk_info_command(char *input) {
 }
 
 void setup_mount_point(char *mount_point, size_t size) {
-    // 1. Пробуем получить пользователя из SUDO_USER
     char *username = getenv("SUDO_USER");
     struct passwd *pw = NULL;
     
     if (username) {
-        // Запущено через sudo, берем исходного пользователя
         pw = getpwnam(username);
     }
     
     if (!pw) {
-        // 2. Берем текущего реального пользователя
         pw = getpwuid(getuid());
     }
     
     if (pw && pw->pw_dir) {
         snprintf(mount_point, size, "%s/users", pw->pw_dir);
     } else {
-        // 3. Fallback на getenv("HOME")
         const char *home = getenv("HOME");
         if (!home) home = "/tmp";
         snprintf(mount_point, size, "%s/users", home);
@@ -194,21 +186,17 @@ int main() {
     setup_mount_point(mount_point, sizeof(mount_point));
     printf("VFS будет смонтирована в: %s\n", mount_point);
     
-    // ===== ШАГ 1: ПОДГОТОВКА ТОЧКИ МОНТИРОВАНИЯ =====
     printf("\n=== Preparing mount point ===\n");
     
-    // 1A. Проверяем существует ли директория
     struct stat st;
     if (stat(mount_point, &st) == 0) {
         printf("Directory exists\n");
         
-        // Проверяем владельца
         if (st.st_uid != getuid()) {
             printf("Warning: Directory owned by uid=%d, not current user uid=%d\n", 
                    st.st_uid, getuid());
             printf("Trying to fix permissions...\n");
             
-            // Пробуем удалить если пустая
             DIR *dir = opendir(mount_point);
             if (dir) {
                 int empty = 1;
@@ -223,30 +211,25 @@ int main() {
                 closedir(dir);
                 
                 if (empty) {
-                    // Пробуем удалить
                     if (rmdir(mount_point) == 0) {
                         printf("✓ Removed empty directory\n");
                     } else {
                         printf("✗ Cannot remove, need sudo or manual cleanup\n");
                         printf("Please run: sudo rmdir %s\n", mount_point);
-                        // Продолжаем, надеясь что FUSE справится
                     }
                 }
             }
         }
     } else {
-        // Директория не существует - создаем
         printf("Creating directory...\n");
         if (mkdir(mount_point, 0755) != 0) {
             perror("mkdir");
             printf("Falling back to /tmp\n");
-            // Используем /tmp как запасной вариант
             snprintf(mount_point, sizeof(mount_point), "/tmp/kubsh_users_%d", getuid());
             mkdir(mount_point, 0755);
         }
     }
     
-    // 1B. Создаем заново если удалили или не существовала
     if (stat(mount_point, &st) != 0) {
         printf("Creating mount directory...\n");
         if (mkdir(mount_point, 0755) != 0) {
@@ -255,23 +238,19 @@ int main() {
         }
     }
     
-    // 1C. Устанавливаем правильные права
     printf("Setting permissions...\n");
     if (chmod(mount_point, 0755) != 0) {
         perror("chmod");
     }
     
-    // Пытаемся установить владельца (может не получиться без sudo)
     if (chown(mount_point, getuid(), getgid()) != 0) {
         printf("Note: Could not change owner (need sudo)\n");
         printf("Directory owned by: uid=%d, gid=%d\n", st.st_uid, st.st_gid);
     }
     
-    // Проверяем финальные права
     stat(mount_point, &st);
     printf("Final permissions: uid=%d, mode=%o\n", st.st_uid, st.st_mode);
     
-    // ===== ШАГ 2: МОНТИРОВАНИЕ VFS =====
     printf("\n=== Mounting VFS ===\n");
     if (start_users_vfs(mount_point) == 0) {
         printf("✓ Users VFS mounted at %s\n", mount_point);
@@ -282,10 +261,8 @@ int main() {
         printf("Or run kubsh with sudo once to fix permissions\n");
     }
     
-    // ===== ШАГ 3: ПРОВЕРКА МОНТИРОВАНИЯ =====
-    sleep(1); // Даем время FUSE
-     
-    // ===== ШАГ 4: ОСНОВНОЙ ЦИКЛ ШЕЛЛА =====
+    sleep(1);
+    
     printf("\n=== Shell ready ===\n");
 
     while (1) {
@@ -307,8 +284,8 @@ int main() {
             free(input);
             break;
         }
-        else if(strncmp(input, "debug ", 6) == 0){
-            debug(input);
+        else if(strncmp(input, "echo ", 6) == 0){
+            echo(input);
         }
         else if(strncmp(input, "\\e ", 3) == 0){
             print_env_variable(input);

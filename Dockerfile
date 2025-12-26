@@ -6,6 +6,10 @@ RUN apt-get update && apt-get install -y \
 COPY . /opt/
 WORKDIR /opt
 
-RUN make build && make deb
+RUN make build && make deb && \
+    dpkg -i kubsh_*.deb || apt-get install -f -y  # ← УСТАНАВЛИВАЕТ!
 
-RUN test -f kubsh && test -f kubsh_*.deb
+RUN which kubsh && \
+    ls -la /usr/bin/kubsh
+
+CMD ["kubsh"]

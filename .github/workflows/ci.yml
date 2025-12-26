@@ -1,36 +1,32 @@
-name: CI/CD for kubsh
+name: Test kubsh
 
 on: [push, pull_request]
 
 jobs:
-  build-and-test:
+  test:
     runs-on: ubuntu-latest
     
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+    - uses: actions/checkout@v3
     
-    - name: Install dependencies
+    - name: Install build dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y \
           gcc make \
           libreadline-dev \
-          libfuse3-dev
-        
-    - name: Compile
-      run: make build
+          libfuse3-dev \
+          dpkg-dev
     
-    - name: Build deb package
-      run: make deb
-    
-    - name: Run checks
+    - name: Build kubsh
       run: |
-        # Проверка 1: бинарник создан
-        test -f kubsh && echo "✓ Binary created"
-        
-        # Проверка 2: deb-пакет создан
-        test -f kubsh_*.deb && echo "✓ DEB package created"
-        
-        # Проверка 3: можно запустить
-        timeout 1 ./kubsh -c "echo test" 2>/dev/null || echo "Binary executable"
+        make build
+        make deb
+    
+    - name: Run tests
+      run: |
+        docker run \
+          -v $(pwd)/kubsh:/usr/bin/kubsh \
+          -v $(pwd)/kubsh_1.0_amd64.deb:/tmp/kubsh.deb \
+          tyvik/kubsh_test:master \
+          sh -c "dpkg -i /tmp/kubsh.deb || apt-get install -f -y && cd /opt && python3 -m pytest"
