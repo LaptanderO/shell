@@ -26,7 +26,13 @@ jobs:
     - name: Run tests
       run: |
         docker run \
-          -v $(pwd)/kubsh:/usr/bin/kubsh \
+          --rm \
           -v $(pwd)/kubsh_1.0_amd64.deb:/tmp/kubsh.deb \
           tyvik/kubsh_test:master \
-          sh -c "dpkg -i /tmp/kubsh.deb || apt-get install -f -y && cd /opt && python3 -m pytest"
+          sh -c "
+            apt-get update
+            apt-get install -y libfuse3-3 libreadline8 2>/dev/null
+            cp /tmp/kubsh.deb /tmp/internal.deb
+            dpkg -i /tmp/internal.deb 2>/dev/null || apt-get install -f -y
+            cd /opt && python3 -m pytest
+          "
