@@ -65,7 +65,7 @@ void print_env_variable(char *input) {
         uid_t uid = getuid();
         struct passwd *pw = getpwuid(uid);
         if (pw && pw->pw_dir) {
-            printf("HOME=%s\n", pw->pw_dir);
+            printf("%s\n", pw->pw_dir);
         } else {
             printf("Cannot determine HOME directory\n");
         }
@@ -75,18 +75,15 @@ void print_env_variable(char *input) {
     char *value = getenv(var_name);
     if (value != NULL) {
         if (strcmp(var_name, "PATH") == 0) {
-            printf("PATH directories:\n");
             char *path_copy = strdup(value);
             char *dir = strtok(path_copy, ":");
-            int count = 1;
-            
             while (dir != NULL) {
-                printf("%d. %s\n", count++, dir);
+                printf("%s\n", dir);
                 dir = strtok(NULL, ":");
             }
             free(path_copy);
         } else {
-            printf("%s=%s\n", var_name, value);
+            printf("%s\n", value);
         }
     } else {
         printf("Environment variable not found: %s\n", var_name);
@@ -108,7 +105,32 @@ void fork_exec(char *full_path, char **argv) {
 }
 
 void echo(char* input){
-    printf("%s\n", input + 6);
+    input += 5;
+
+    size_t len = strlen(input);
+    if(len > 0 && input[len-1] == '\n'){
+        input[len-1] = '\0';
+    }
+    printf("%s\n", input);
+}
+
+void debug(char* input){
+
+    if(strncmp(input, "debug '", 7) == 0){
+        input += 7;
+    } else {
+        input += 6;
+    }
+    
+    size_t len = strlen(input);
+    if(len > 0 && input[len-1] == '\''){
+        input[len-1] = '\0';
+    }
+
+    if(len > 0 && input[len-1] == '\n'){
+        input[len-1] = '\0';
+    }
+    printf("%s\n", input);
 }
 
 void disk_info_command(char *input) {
@@ -154,6 +176,11 @@ void disk_info_command(char *input) {
 }
 
 void setup_mount_point(char *mount_point, size_t size) {
+    if(getuid() == 0) {
+        snprintf(mount_point, size, "/opt/users");
+        return;
+    }
+
     char *username = getenv("SUDO_USER");
     struct passwd *pw = NULL;
     
@@ -186,16 +213,10 @@ int main() {
     setup_mount_point(mount_point, sizeof(mount_point));
     printf("VFS будет смонтирована в: %s\n", mount_point);
     
-    printf("\n=== Preparing mount point ===\n");
-    
     struct stat st;
     if (stat(mount_point, &st) == 0) {
-        printf("Directory exists\n");
         
         if (st.st_uid != getuid()) {
-            printf("Warning: Directory owned by uid=%d, not current user uid=%d\n", 
-                   st.st_uid, getuid());
-            printf("Trying to fix permissions...\n");
             
             DIR *dir = opendir(mount_point);
             if (dir) {
@@ -262,8 +283,6 @@ int main() {
     }
     
     sleep(1);
-    
-    printf("\n=== Shell ready ===\n");
 
     while (1) {
         input = readline("#> ");
@@ -284,8 +303,11 @@ int main() {
             free(input);
             break;
         }
-        else if(strncmp(input, "echo ", 6) == 0){
+        else if(strncmp(input, "echo ", 5) == 0){
             echo(input);
+        }
+        else if (strncmp(input, "debug ", 6) == 0){
+            debug(input);
         }
         else if(strncmp(input, "\\e ", 3) == 0){
             print_env_variable(input);
@@ -310,7 +332,7 @@ int main() {
                     fork_exec(full_path, argv);
                     free(full_path);
                 } else {
-                    printf("Command not found: %s\n", argv[0]);
+                    printf("%s: command not found\n", argv[0]);
                 }
             }
         }   

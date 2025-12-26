@@ -19,7 +19,6 @@ static int vfs_pid = -1;
 static struct passwd *users_list[MAX_USERS];
 static int users_count = 0;
 
-// Прототипы
 void free_users_list(void);
 int get_users_list(void);
 static struct passwd *find_user(const char *name);
@@ -34,7 +33,6 @@ static int users_getattr(const char *path, struct stat *stbuf,
 static int users_mkdir(const char *path, mode_t mode);
 static int users_rmdir(const char *path);
 
-// Освобождение списка пользователей
 void free_users_list(void) {
     for (int i = 0; i < users_count; i++) {
         if (users_list[i]) {
@@ -47,7 +45,6 @@ void free_users_list(void) {
     users_count = 0;
 }
 
-// Получение списка пользователей
 int get_users_list(void) {
     setpwent();
     
@@ -74,7 +71,6 @@ int get_users_list(void) {
     return users_count;
 }
 
-// Поиск пользователя по имени
 static struct passwd *find_user(const char *name) {
     for (int i = 0; i < users_count; i++) {
         if (strcmp(users_list[i]->pw_name, name) == 0) {
@@ -84,7 +80,6 @@ static struct passwd *find_user(const char *name) {
     return NULL;
 }
 
-// Обработка чтения директории
 static int users_readdir(
     const char *path, 
     void *buf, 
@@ -101,15 +96,13 @@ static int users_readdir(
     filler(buf, "..", NULL, 0, 0);
     
     if (strcmp(path, "/") == 0) {
-        // Корневая директория - список пользователей
         for (int i = 0; i < users_count; i++) {
             filler(buf, users_list[i]->pw_name, NULL, 0, 0);
         }
     } else {
-        // Директория пользователя
         char *user_name = strrchr(path, '/');
         if (user_name) {
-            user_name++; // Пропускаем '/'
+            user_name++; 
             struct passwd *user = find_user(user_name);
             if (user) {
                 filler(buf, "id", NULL, 0, 0);
@@ -122,9 +115,7 @@ static int users_readdir(
     return 0;
 }
 
-// Открытие файла
 static int users_open(const char *path, struct fuse_file_info *fi) {
-    // Проверяем существование файла
     struct stat st;
     if (users_getattr(path, &st, fi) != 0) {
         return -ENOENT;
@@ -137,7 +128,6 @@ static int users_open(const char *path, struct fuse_file_info *fi) {
     return 0;
 }
 
-// Чтение из файла
 static int users_read(
     const char *path, 
     char *buf, 
@@ -147,24 +137,20 @@ static int users_read(
 ) {
     (void) fi;
     
-    // Создаем копию пути
     char path_copy[256];
     strncpy(path_copy, path, sizeof(path_copy) - 1);
     path_copy[sizeof(path_copy) - 1] = '\0';
     
-    // Убираем начальный слеш
     char *name = path_copy;
     if (name[0] == '/') {
         name++;
     }
     
-    // Находим разделитель
     char *slash = strchr(name, '/');
     if (!slash) {
         return -ENOENT;
     }
     
-    // Разделяем
     *slash = '\0';
     char *username = name;
     char *filename = slash + 1;
@@ -174,7 +160,6 @@ static int users_read(
         return -ENOENT;
     }
     
-    // Определяем содержимое файла
     char content[256];
     content[0] = '\0';
     
@@ -191,7 +176,7 @@ static int users_read(
     size_t content_len = strlen(content);
     
     if (offset >= content_len) {
-        return 0; // Конец файла
+        return 0; 
     }
     
     if (offset + size > content_len) {
@@ -202,7 +187,6 @@ static int users_read(
     return size;
 }
 
-// Получение атрибутов файла/директории
 static int users_getattr(const char *path, struct stat *stbuf,
                          struct fuse_file_info *fi) {
     (void) fi;
@@ -210,7 +194,6 @@ static int users_getattr(const char *path, struct stat *stbuf,
     memset(stbuf, 0, sizeof(struct stat));
     
     if (strcmp(path, "/") == 0) {
-        // Корневая директория
         stbuf->st_mode = S_IFDIR | 0755;
         stbuf->st_nlink = 2;
         stbuf->st_uid = getuid();
@@ -218,22 +201,18 @@ static int users_getattr(const char *path, struct stat *stbuf,
         return 0;
     }
     
-    // Создаем копию пути для безопасной работы
     char path_copy[256];
     strncpy(path_copy, path, sizeof(path_copy) - 1);
     path_copy[sizeof(path_copy) - 1] = '\0';
     
-    // Убираем начальный слеш
     char *name = path_copy;
     if (name[0] == '/') {
         name++;
     }
     
-    // Ищем разделитель
     char *slash = strchr(name, '/');
     
     if (slash == NULL) {
-        // Нет слеша - это директория пользователя (например "student")
         struct passwd *user = find_user(name);
         if (user) {
             stbuf->st_mode = S_IFDIR | 0755;
@@ -243,14 +222,12 @@ static int users_getattr(const char *path, struct stat *stbuf,
             return 0;
         }
     } else {
-        // Есть слеш - это файл в директории пользователя
-        *slash = '\0';  // Разделяем на имя пользователя и имя файла
+        *slash = '\0';
         char *username = name;
         char *filename = slash + 1;
         
         struct passwd *user = find_user(username);
         if (user) {
-            // Проверяем допустимые файлы
             if (strcmp(filename, "id") == 0 || 
                 strcmp(filename, "home") == 0 || 
                 strcmp(filename, "shell") == 0) {
@@ -260,11 +237,10 @@ static int users_getattr(const char *path, struct stat *stbuf,
                 stbuf->st_uid = user->pw_uid;
                 stbuf->st_gid = user->pw_gid;
                 
-                // Устанавливаем размер файла
                 if (strcmp(filename, "id") == 0) {
                     stbuf->st_size = snprintf(NULL, 0, "%d\n", user->pw_uid);
                 } else if (strcmp(filename, "home") == 0) {
-                    stbuf->st_size = strlen(user->pw_dir) + 1;  // +1 для \n
+                    stbuf->st_size = strlen(user->pw_dir) + 1;
                 } else if (strcmp(filename, "shell") == 0) {
                     stbuf->st_size = strlen(user->pw_shell) + 1;
                 }
@@ -275,18 +251,15 @@ static int users_getattr(const char *path, struct stat *stbuf,
     return -ENOENT;
 }
 
-// Создание директории (добавление пользователя)
 static int users_mkdir(const char *path, mode_t mode) {
     char *user_name = strrchr(path, '/');
     if (!user_name) return -EINVAL;
-    user_name++; // Пропускаем '/'
+    user_name++;
     
-    // Проверяем, не существует ли уже такой пользователь
     if (find_user(user_name)) {
         return -EEXIST;
     }
     
-    // Запускаем adduser
     char command[256];
     snprintf(command, sizeof(command), "sudo adduser --disabled-password --gecos '' %s", user_name);
     
@@ -295,29 +268,25 @@ static int users_mkdir(const char *path, mode_t mode) {
         return -EACCES;
     }
     
-    // Обновляем список пользователей
     get_users_list();
     
     return 0;
 }
 
-// Удаление директории (удаление пользователя)
 static int users_rmdir(const char *path) {
     char *user_name = strrchr(path, '/');
     if (!user_name) return -EINVAL;
-    user_name++; // Пропускаем '/'
+    user_name++;
     
     struct passwd *user = find_user(user_name);
     if (!user) {
         return -ENOENT;
     }
     
-    // Нельзя удалить текущего пользователя
     if (user->pw_uid == getuid()) {
         return -EPERM;
     }
     
-    // Запускаем userdel
     char command[256];
     snprintf(command, sizeof(command), "sudo userdel -r %s", user_name);
     
@@ -326,7 +295,6 @@ static int users_rmdir(const char *path) {
         return -EACCES;
     }
     
-    // Обновляем список пользователей
     get_users_list();
     
     return 0;
@@ -342,7 +310,13 @@ static struct fuse_operations users_oper = {
 };
 
 int start_users_vfs(const char *mount_point) {
-    // Создаем директорию если не существует
+    struct stat fuse_stat;
+    if (stat("/dev/fuse", &fuse_stat) != 0) {
+        printf("ERROR: /dev/fuse not available! FUSE won't work.\n");
+        printf("ERROR: Docker needs: --device /dev/fuse --cap-add SYS_ADMIN\n");
+        return -1;
+    }
+   
     struct stat st;
     if (stat(mount_point, &st) != 0) {
         if (mkdir(mount_point, 0755) != 0) {
@@ -353,17 +327,15 @@ int start_users_vfs(const char *mount_point) {
 
     if (chown(mount_point, getuid(), getgid()) != 0) {
         perror("chown mount_point");
-        // Не завершаем, продолжаем
     }
 
-    int pid = fork();    
+    int pid = fork();
     if (pid == 0) {
-        // Дочерний процесс
         char *fuse_argv[] = {
-            "users_vfs",    // имя программы
-            "-f",           // foreground mode
-            "-s",           // single-threaded
-            (char*)mount_point, // точка монтирования
+            "users_vfs",
+            "-f"
+            "-s",
+            (char*)mount_point,
             NULL
         };
         
@@ -376,8 +348,7 @@ int start_users_vfs(const char *mount_point) {
         
         free_users_list();
         exit(ret);
-    } else if (pid > 0) { 
-        // Родительский процесс
+    } else if (pid > 0) {
         vfs_pid = pid;
         printf("VFS запущена в процессе %d, монтирована в %s\n", pid, mount_point);
         sleep(1);
