@@ -46,12 +46,23 @@ void free_users_list(void) {
 }
 
 int get_users_list(void) {
+    free_users_list();
+    
     setpwent();
     
     struct passwd *pwd;
     users_count = 0;
     
     while ((pwd = getpwent()) != NULL && users_count < MAX_USERS) {
+        if (pwd->pw_shell == NULL) continue;
+        
+        size_t shell_len = strlen(pwd->pw_shell);
+        if (shell_len < 2) continue;
+        
+        if (strcmp(pwd->pw_shell + shell_len - 2, "sh") != 0) {
+            continue;
+        }
+        
         struct passwd *copy = malloc(sizeof(struct passwd));
         if (!copy) {
             free_users_list();
@@ -61,13 +72,25 @@ int get_users_list(void) {
         copy->pw_name = strdup(pwd->pw_name);
         copy->pw_uid = pwd->pw_uid;
         copy->pw_gid = pwd->pw_gid;
-        copy->pw_dir = strdup(pwd->pw_dir);
+        copy->pw_dir = pwd->pw_dir ? strdup(pwd->pw_dir) : strdup("");
         copy->pw_shell = strdup(pwd->pw_shell);
         
         users_list[users_count++] = copy;
     }
     
     endpwent();
+    
+    if (users_count == 0) {
+        struct passwd *root = malloc(sizeof(struct passwd));
+        root->pw_name = strdup("root");
+        root->pw_uid = 0;
+        root->pw_gid = 0;
+        root->pw_dir = strdup("/root");
+        root->pw_shell = strdup("/bin/bash");
+        users_list[0] = root;
+        users_count = 1;
+    }
+    
     return users_count;
 }
 
@@ -88,10 +111,6 @@ static int users_readdir(
     struct fuse_file_info *fi,
     enum fuse_readdir_flags flags
 ) {
-    (void) offset;
-    (void) fi;
-    (void) flags;
-    
     filler(buf, ".", NULL, 0, 0);
     filler(buf, "..", NULL, 0, 0);
     
@@ -102,7 +121,7 @@ static int users_readdir(
     } else {
         char *user_name = strrchr(path, '/');
         if (user_name) {
-            user_name++; 
+            user_name++;
             struct passwd *user = find_user(user_name);
             if (user) {
                 filler(buf, "id", NULL, 0, 0);
@@ -164,11 +183,11 @@ static int users_read(
     content[0] = '\0';
     
     if (strcmp(filename, "id") == 0) {
-        snprintf(content, sizeof(content), "%d\n", user->pw_uid);
+        snprintf(content, sizeof(content), "%d", user->pw_uid);
     } else if (strcmp(filename, "home") == 0) {
-        snprintf(content, sizeof(content), "%s\n", user->pw_dir);
+        snprintf(content, sizeof(content), "%s", user->pw_dir);
     } else if (strcmp(filename, "shell") == 0) {
-        snprintf(content, sizeof(content), "%s\n", user->pw_shell);
+        snprintf(content, sizeof(content), "%s", user->pw_shell);
     } else {
         return -ENOENT;
     }
@@ -238,11 +257,11 @@ static int users_getattr(const char *path, struct stat *stbuf,
                 stbuf->st_gid = user->pw_gid;
                 
                 if (strcmp(filename, "id") == 0) {
-                    stbuf->st_size = snprintf(NULL, 0, "%d\n", user->pw_uid);
+                    stbuf->st_size = snprintf(NULL, 0, "%d", user->pw_uid);
                 } else if (strcmp(filename, "home") == 0) {
-                    stbuf->st_size = strlen(user->pw_dir) + 1;
+                    stbuf->st_size = strlen(user->pw_dir);
                 } else if (strcmp(filename, "shell") == 0) {
-                    stbuf->st_size = strlen(user->pw_shell) + 1;
+                    stbuf->st_size = strlen(user->pw_shell);
                 }
                 return 0;
             }
@@ -260,6 +279,32 @@ static int users_mkdir(const char *path, mode_t mode) {
         return -EEXIST;
     }
     
+    if (getuid() == 0) {
+        if (users_count < MAX_USERS) {
+            struct passwd *new_user = malloc(sizeof(struct passwd));
+            if (!new_user) return -ENOMEM;
+            
+            new_user->pw_name = strdup(user_name);
+            new_user->pw_uid = 1000 + users_count;
+            new_user->pw_gid = 1000 + users_count;
+            new_user->pw_dir = malloc(256);
+            snprintf(new_user->pw_dir, 256, "/home/%s", user_name);
+            new_user->pw_shell = strdup("/bin/bash");
+            
+            users_list[users_count++] = new_user;
+            
+            FILE *passwd = fopen("/etc/passwd", "a");
+            if (passwd) {
+                fprintf(passwd, "%s:x:%d:%d::/home/%s:/bin/bash",
+                        user_name, new_user->pw_uid, new_user->pw_gid, user_name);
+                fclose(passwd);
+            }
+            
+            return 0;
+        }
+        return -ENOSPC;
+    }
+    
     char command[256];
     snprintf(command, sizeof(command), "sudo adduser --disabled-password --gecos '' %s", user_name);
     
@@ -269,7 +314,6 @@ static int users_mkdir(const char *path, mode_t mode) {
     }
     
     get_users_list();
-    
     return 0;
 }
 
@@ -310,13 +354,6 @@ static struct fuse_operations users_oper = {
 };
 
 int start_users_vfs(const char *mount_point) {
-    struct stat fuse_stat;
-    if (stat("/dev/fuse", &fuse_stat) != 0) {
-        printf("ERROR: /dev/fuse not available! FUSE won't work.\n");
-        printf("ERROR: Docker needs: --device /dev/fuse --cap-add SYS_ADMIN\n");
-        return -1;
-    }
-   
     struct stat st;
     if (stat(mount_point, &st) != 0) {
         if (mkdir(mount_point, 0755) != 0) {
@@ -331,32 +368,26 @@ int start_users_vfs(const char *mount_point) {
 
     int pid = fork();
     if (pid == 0) {
-        char *fuse_argv[] = {
-            "users_vfs",
-            "-f"
-            "-s",
-            (char*)mount_point,
-            NULL
-        };
-        
         if (get_users_list() <= 0) {
             fprintf(stderr, "Не удалось получить список пользователей\n");
             exit(1);
         }
         
+        char *fuse_argv[] = {
+            "users_vfs",
+            "-f",
+            "-s",
+            (char*)mount_point,
+            NULL
+        };
+        
         int ret = fuse_main(4, fuse_argv, &users_oper, NULL);
         
         free_users_list();
         exit(ret);
-    } else if (pid > 0) {
+    } else if (pid > 0) { 
         vfs_pid = pid;
-        printf("VFS запущена в процессе %d, монтирована в %s\n", pid, mount_point);
         sleep(1);
-
-        if (stat(mount_point, &st) == 0) {
-            printf("✓ VFS successfully mounted\n");
-        }
-
         return 0;
     } else {
         perror("fork");
@@ -369,6 +400,5 @@ void stop_users_vfs() {
         kill(vfs_pid, SIGTERM);
         waitpid(vfs_pid, NULL, 0);
         vfs_pid = -1;
-        printf("VFS остановлена\n");
     }
 }

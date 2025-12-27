@@ -9,30 +9,18 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     
-    - name: Install build dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          gcc make \
-          libreadline-dev \
-          libfuse3-dev \
-          dpkg-dev
-    
-    - name: Build kubsh
-      run: |
-        make build
-        make deb
-    
-    - name: Run tests
+    - name: Запуск тестов в Docker
       run: |
         docker run \
           --rm \
-          -v $(pwd)/kubsh_1.0_amd64.deb:/tmp/kubsh.deb \
+          --privileged \
+          -v $(pwd):/build \
           tyvik/kubsh_test:master \
           sh -c "
             apt-get update
-            apt-get install -y libfuse3-3 libreadline8 2>/dev/null
-            cp /tmp/kubsh.deb /tmp/internal.deb
-            dpkg -i /tmp/internal.deb 2>/dev/null || apt-get install -f -y
-            cd /opt && python3 -m pytest
+            apt-get install -y gcc make libreadline-dev libfuse3-dev
+            cd /build
+            gcc kubsh.c vfs.c -lreadline -lfuse3 -o kubsh
+            cp kubsh /usr/bin/
+            cd /opt && python3 -m pytest -v
           "
