@@ -12,9 +12,7 @@
 
 #define HISTORY_FILE ".kubsh_history"
 
-// В kubsh.c, после #include и до main()
-int start_users_vfs(const char *mount_point);
-void stop_users_vfs(void);
+#include "vfs.h"
 
 void sig_handler(int sig) {
     printf("Configuration reloaded\n");

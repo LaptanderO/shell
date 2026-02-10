@@ -2,7 +2,7 @@ all: build
 
 build: kubsh
 
-kubsh: kubsh.c vfs.c
+kubsh: kubsh.c vfs.c vfs.h
 	gcc kubsh.c vfs.c -lreadline -lfuse3 -o kubsh
 
 run: kubsh

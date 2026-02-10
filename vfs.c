@@ -279,37 +279,23 @@ static int users_mkdir(const char *path, mode_t mode) {
         return -EEXIST;
     }
     
-    if (getuid() == 0) {
-        if (users_count < MAX_USERS) {
-            struct passwd *new_user = malloc(sizeof(struct passwd));
-            if (!new_user) return -ENOMEM;
-            
-            new_user->pw_name = strdup(user_name);
-            new_user->pw_uid = 1000 + users_count;
-            new_user->pw_gid = 1000 + users_count;
-            new_user->pw_dir = malloc(256);
-            snprintf(new_user->pw_dir, 256, "/home/%s", user_name);
-            new_user->pw_shell = strdup("/bin/bash");
-            
-            users_list[users_count++] = new_user;
-            
-            FILE *passwd = fopen("/etc/passwd", "a");
-            if (passwd) {
-                fprintf(passwd, "%s:x:%d:%d::/home/%s:/bin/bash",
-                        user_name, new_user->pw_uid, new_user->pw_gid, user_name);
-                fclose(passwd);
-            }
-            
-            return 0;
-        }
-        return -ENOSPC;
-    }
+    char command[512];
     
-    char command[256];
+    // БЕЗ sudo - в контейнере мы root
+   
+    if (getuid() == 0) {
+    // root - без sudo
+    snprintf(command, sizeof(command), "adduser --disabled-password --gecos '' %s", user_name);
+    } else {
+    // не root - с sudo (для реальной системы)
     snprintf(command, sizeof(command), "sudo adduser --disabled-password --gecos '' %s", user_name);
+    }
+   
+    printf("DEBUG: Executing command: %s\n", command);
     
     int ret = system(command);
     if (ret != 0) {
+        fprintf(stderr, "DEBUG: Command failed with code %d\n", ret);
         return -EACCES;
     }
     
@@ -331,16 +317,22 @@ static int users_rmdir(const char *path) {
         return -EPERM;
     }
     
-    char command[256];
-    snprintf(command, sizeof(command), "sudo userdel -r %s", user_name);
+    char command[512];
+    // БЕЗ sudo
+    if(getuid() == 0) {
+        snprintf(command, sizeof(command), "userdel -r %s", user_name);
+    } else {
+        snprintf(command, sizeof(command), "sudo userdel -r %s", user_name);
+    }
+    printf("DEBUG: Executing command: %s\n", command);
     
     int ret = system(command);
     if (ret != 0) {
+        fprintf(stderr, "DEBUG: Command failed with code %d\n", ret);
         return -EACCES;
     }
     
     get_users_list();
-    
     return 0;
 }
 
